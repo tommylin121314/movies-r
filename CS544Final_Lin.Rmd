@@ -1,0 +1,425 @@
+---
+title: "CS544 Final: Movies Analysis"
+author: "Tommy Lin"
+output:
+  html_document:
+    fig_width: 8
+    code_folding: hide
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: true
+---
+
+
+
+
+# Overview
+In this project, I will be attempting to answer some questions about movies. How much do movies typically cost to make? How much revenue do they generate? These are a couple of performance related questions that I think will be interesting. I would also like to test Central Limit Theorem and sampling on this dataset. Looking at the data by genre would also be fascinating to see which genres are most popular, most successful, and most liked.
+
+# Data
+The data set we will be examining in this project can be found on Kaggle at this link: https://www.kaggle.com/datasets/akshaypawar7/millions-of-movies. This data set contains over 700,000 movies from The Movie Database, and is updated daily. Notable features we will be looking at include genre, revenue, budget, and release date.
+```{r Import, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
+library(tidyverse)
+movies <- tibble(read.csv("./movies.csv", na.strings = c("", "NA")))
+movies
+```
+
+# Preprocessing
+Before we begin analyzing the data, there are some steps we can take to clean the data.
+
+1. Remove unreleased, non-American movies
+
+2. Remove movies released in 2024 because 2024 has not concluded yet
+
+3. Remove null or 0 values
+4. Scale revenue and budget columns to represent millions of dollars
+5. Consolidate a movie's genres into one main genre
+  ex. "Action-Adventure-Thriller" -> "Action"
+6. Select relevant features: title, genre, vote_average, budget, revenue
+
+After these steps, we are left with about 5,500 data entries to work with.
+```{r Preprocess, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
+library(stringr)
+filtered_movies <- movies |>
+  filter(status == "Released", original_language == "en") |>
+  filter(!str_detect(release_date, "^(2024)")) |>
+  filter(revenue > 0, budget > 0) |>
+  na.omit() |>
+  mutate(genre = str_extract(genres, "^[^-]*")) |>
+  mutate(budget = budget / 1000000) |>
+  mutate(revenue = revenue / 1000000) |>
+  select(title, genre, vote_average, budget, revenue)
+filtered_movies
+```
+
+# Top Movie Genres
+Below, we will look at how common certain movie genres are compared to others. Based on the movies I have seen or heard of, I believe Action is likely to be the most common genre. Horror movies are also frequently featured on social media and advertising, so I would guess that they are common as well.
+```{r Plot Genre Freq, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
+library(plotly)
+genre_table <- sort(table(filtered_movies$genre), decreasing=TRUE)
+plot_ly(x=names(genre_table),
+        y=genre_table,
+        type="bar",
+        fill=names(genre_table)) |>
+  layout(title="Movie Genre Frequency",
+         xaxis=list(title="Genre",
+                    categoryorder="array",
+                    categoryarray=names(genre_table)),
+         yaxis=list(title="Occurrences"))
+```
+```{r Plot Genre Dist, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
+genre_df <- data.frame(genre_table)
+colnames(genre_df) <- c("Genre", "Freq")
+plot_ly(genre_df,
+        labels=~Genre,
+        values=~Freq,
+        type="pie") |>
+  layout(title="Movie Genre Distribution")
+```
+From the two graphs above, we can clearly see the top three most common movie genres. I was correct to think that Action and Horror would appear among the most common. However, I did not think Comedy was this frequent. The Comedy genre is the most common, accounting for 21.1% of all movies. Next is the Drama genre which accounts for 20% of all movies. Thirdly, there is the Action genre at 15.8%. There is a large difference between the top three and the other genres. The TV Movie, History, and Documentary genres were among the least popular, each making up less than 1% of all movies. 
+
+# Examining Budget and Revenue
+A large talking point in the movie industry revolves around finances. How much money did a movie cost to make? How much revenue did the movie earn? These questions are always discussed when a new and anticipated movie releases. Below are graphs giving insight into how much a movie typically costs to make, as well as how much the average movie makes. We'll also look at the actual net profit of movies after revenue and cost are considered.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+library(ggplot2)
+
+gg <- ggplot(data=filtered_movies, aes(x=budget)) +
+  geom_histogram(breaks=seq(0, 500, 25), fill='yellow') +
+  ggtitle("Budget Histogram") +
+  geom_vline(xintercept=mean(filtered_movies$budget), color="red", linetype="dashed") +
+  geom_text(label="mean", x=mean(filtered_movies$budget)+20, y=1800, color="red") +
+  xlab("Budget (millions)") +
+  theme(
+    plot.title = element_text(hjust=0.5),
+  )
+ggplotly(gg)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+gg <- ggplot(data=filtered_movies, aes(x=revenue)) +
+  geom_histogram(breaks=seq(0, 3000, 100), fill="blue") +
+  ggtitle("Revenue Histogram") +
+  xlab("Revenue (millions)") +
+  geom_vline(xintercept=mean(filtered_movies$revenue), color="red", linetype="dashed") +
+  geom_text(label="mean", x=mean(filtered_movies$revenue)+120, y=1800, color="red") +
+  theme(
+    plot.title = element_text(hjust=0.5),
+  )
+ggplotly(gg)
+```
+After examining the revenue and budget, I would like to examine the net profit of each movie. To do so, we must create a new feature called profit by subtracting budget from revenue. Then we can plot the profit histogram.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+filtered_movies <- filtered_movies |>
+  mutate(profit = revenue - budget)   
+gg <- ggplot(data=filtered_movies, aes(x=profit)) +
+  geom_histogram(breaks=seq(-200, 3000, 100), fill="green") +
+  ggtitle("Profit Histogram") +
+  xlab("Profit (millions)") +
+  geom_vline(xintercept=mean(filtered_movies$profit), color="red", linetype="dashed") +
+  geom_text(label="mean", x=mean(filtered_movies$profit)+120, y=1800, color="red") +
+  theme(
+    plot.title = element_text(hjust=0.5),
+  )
+ggplotly(gg)
+```
+In the three histograms above, we examined the distribution of budget, revenue, and profit. For all three features, values closer to $0 were very frequent, while higher values grew less frequent. The average budget for a movie was $36.4 million, the average revenue for a movie was $107.7 million, and the average profit for a movie was $71.3 million. 
+
+From the profit histogram, I am surprised to see how common it is for movies to lose money. The most common profit margin is $0-$50 million, but the second most common outcome is losing $0-$50 million. While social media likes to highlights popular movies like Avatar and Avengers Endgame breaking box office records, it seems that the average movie isn't guaranteed to make much of a profit, if any at all.
+
+# Budget vs Revenue
+After diving into budget and revenue, is there a correlation between the two? Does spending more on a movie translate to a higher revenue? Can we find an equation for the line of best fit that we can use to estimate revenue using budget and visa-versa?
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+lbf <- lm(filtered_movies$revenue ~ filtered_movies$budget)
+
+gg <- ggplot(filtered_movies, aes(budget, revenue)) +
+  geom_point(size=0.6) +
+  geom_abline(intercept=coef(lbf)[1], slope=coef(lbf)[2], color="red", linetype="dashed") +
+  ggtitle("Budget vs Revenue") +
+  xlab("Budget (millions)") +
+  ylab("Revenue (millions)") +
+  theme(
+    plot.title = element_text(hjust=0.5),
+  )
+ggplotly(gg)
+```
+Looking at the scatter plot above, I can see a positive correlation between budget and revenue. As budget increases, the revenue also seems to increase. Of course there are data points that go against this, but the general trend of the points look to be upward. This is further proved by the line of best fit, which has a slope of about 3.15, which indicates a positive direct relation between budget and revenue.
+
+# Performance By Genre
+Earlier we looked at the genre distribution of movies and found that Comedy, Drama, and Action were the three most common genres. To compare the performance of each genre, I will plot the average budget, revenue, and profit of each genre. This could give us insight into why these genres are so popular. Is it because they are the most lucrative? Do they make more money compared to other genres? Or does it not have to do with money at all?
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+metrics_by_genre <- filtered_movies |>
+  group_by(genre) |>
+  summarise(
+    budget=mean(budget),
+    revenue=mean(revenue),
+    profit=mean(profit)
+  ) |> 
+  arrange(desc(profit), desc(revenue), desc(budget)) |>
+  tidyr::pivot_longer(
+    cols=c(budget, revenue, profit),
+    names_to="metric",
+    values_to="amount"
+  )
+metrics_by_genre$genre <- factor(metrics_by_genre$genre,
+                         levels=factor(metrics_by_genre$genre)[seq(1, length(metrics_by_genre$genre), 3)])
+gg <- ggplot(metrics_by_genre, aes(fill=metric, y=amount, x=genre)) +
+  geom_bar(position="dodge", stat="identity") +
+  ylab("amount (millions)") +
+  ggtitle("Budget/Profit/Revenue by Genre") +
+  geom_hline(yintercept=mean(filtered_movies$budget), color="red", linetype="dashed") +
+  geom_hline(yintercept=mean(filtered_movies$revenue), color="blue", linetype="dashed") +
+  geom_hline(yintercept=mean(filtered_movies$profit), color="green", linetype="dashed") +
+  theme(
+    plot.title = element_text(hjust=0.5),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)
+  )
+ggplotly(gg)
+```
+As we can see, the top three most common movie genres we found from earlier are not the top 3 more successful genres. The most profitable genre is Animation, which on average generates about $185 million profit. Next most profitable is Adventure at about $163 million. Third is Family at around $122 million. 
+
+The most common genre, Comedy, is only the 9th most profitable. This is a big difference between popularity and box office performance. Action movies, which were the 3rd most common, are also the 4th most profitable. The Drama genre, which was the 2nd most common, is even less profitable than Comedy, landing in 14th place out of 19 genres.
+
+From this, I assume that the main reason why certain genres are more common than others is something other than box office performance. Perhaps these genres are easier to direct or write. If we look back at our genre distribution chart, Animation is the 8th most common genre, even though it is the most successful. This could be due to the fact that there is a learning curve to modern animation techniques that some directors haven't fully grasped yet.
+
+# Viewer Score Distribution
+One of the features in this data set is called vote_average. This represents the score of a movie, voted by the viewers. Great movies will have scores closer to 10 and bad movies will have scores closer to 0. I will plot the distribution of the scores.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+gg <- ggplot(filtered_movies, aes(x=vote_average)) +
+  geom_histogram(aes(y=..density..), breaks=seq(0, 10, 0.5), 
+                 color='black', fill="blue", alpha=0.4) +
+  geom_density() +
+  geom_vline(xintercept=mean(filtered_movies$vote_average), color="red", linetype="dashed") +
+  ggtitle("Vote Average Distribution") +
+  theme(
+    plot.title = element_text(hjust=0.5)
+  )
+ggplotly(gg)
+```
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+cat("Mean of Vote Average:", mean(filtered_movies$vote_average),
+    "\nSD of Vote Average:", sd(filtered_movies$vote_average))
+```
+# Central Limit Theorem
+From the graph, we can see that the vote average follows a normal distribution, because it looks like a bell curve. The mean is 6.51 and the standard deviation is 0.79. Next, let us see if the Central Limit Theorem applies to vote average on various random samples. I will be randomly selecting 1000 samples each of sizes 10, 20, 30, and 40.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+num_samples <- 1000
+xbar_10 <- numeric(num_samples)
+xbar_20 <- numeric(num_samples)
+xbar_30 <- numeric(num_samples)
+xbar_40 <- numeric(num_samples)
+
+set.seed(544)
+for (i in 1:num_samples) {
+  xbar_10[i] <- mean(sample(filtered_movies$vote_average, 10, replace=FALSE))
+  xbar_20[i] <- mean(sample(filtered_movies$vote_average, 20, replace=FALSE))
+  xbar_30[i] <- mean(sample(filtered_movies$vote_average, 30, replace=FALSE))
+  xbar_40[i] <- mean(sample(filtered_movies$vote_average, 40, replace=FALSE))
+}
+
+p1 <- plot_ly(x=~xbar_10, type="histogram", histnorm="probability", name="Size 10")
+p2 <- plot_ly(x=~xbar_20, type="histogram", histnorm="probability", name="Size 20")
+p3 <- plot_ly(x=~xbar_30, type="histogram", histnorm="probability", name="Size 30")
+p4 <- plot_ly(x=~xbar_40, type="histogram", histnorm="probability", name="Size 40")
+
+fig <- subplot(p1, p2, p3, p4, nrows=2, margin=0.1) |>
+  layout(
+    title="Vote Average Random Sample Distribution",
+    legend = list(title=list(text="Sample Sizes")),
+    annotations=list(
+      list(text="Vote Average", x=0.12, y=0.55, xref="paper", yref="paper", 
+           xanchor="left", yanchor="top", showarrow=F),
+      list(text="Vote Average", x=0.72, y=0.55, xref="paper", yref="paper", 
+           xanchor="left", yanchor="top", showarrow=F),
+      list(text="Vote Average", x=0.12, y=-0.05, xref="paper", yref="paper", 
+           xanchor="left", yanchor="top", showarrow=F),
+      list(text="Vote Average", x=0.72, y=-0.05, xref="paper", yref="paper", 
+           xanchor="left", yanchor="top", showarrow=F),
+      list(text="Density", x=-0.1, y=0.25, xref="paper", yref="paper", 
+           xanchor="left", yanchor="top", showarrow=F, textangle=-90),
+      list(text="Density", x=-0.1, y=0.82, xref="paper", yref="paper", 
+           xanchor="left", yanchor="top", showarrow=F, textangle=-90),
+      list(text="Density", x=0.5, y=0.25, xref="paper", yref="paper", 
+           xanchor="left", yanchor="top", showarrow=F, textangle=-90),
+      list(text="Density", x=0.5, y=0.82, xref="paper", yref="paper", 
+           xanchor="left", yanchor="top", showarrow=F, textangle=-90)
+    )
+  )
+fig
+```
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+cat(
+  "Population:\n",
+  "Mean: ", mean(filtered_movies$vote_average), "SD: ", sd(filtered_movies$vote_average),
+  "\nSample Size 10:\n",
+  "Mean: ", mean(xbar_10), "SD: ", sd(xbar_10),
+  "\nSample Size 20:\n",
+  "Mean: ", mean(xbar_20), "SD: ", sd(xbar_20),
+  "\nSample Size 30:\n",
+  "Mean: ", mean(xbar_30), "SD: ", sd(xbar_30),
+  "\nSample Size 40:\n",
+  "Mean: ", mean(xbar_40), "SD: ", sd(xbar_40)
+)
+```
+The Central Limit Theorem is applicable to this dataset. I took 1000 samples of size 10, 20, 30, and 40, and plotted the distribution of the means. As seen in the graphs and the calculations, the sampled means are very similar to the mean of the population. All of them are about 6.5.
+
+We also see that standard deviation is decreasing as sample size increases. This behavior is expected because averaging more samples leads to less variability.
+
+# Sampling Distribution
+Next we will look at how different types of sampling can affect the average revenue, budget, and profit when compared to the population. The sampling methods will be simple sampling with replacement, systematic sampling, and stratified sampling. The sample size of each method will be 100. The systematic sampling specifically will have 101 samples to avoid have 0 size genres.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+library(sampling)
+
+sample_size <- 100
+
+set.seed(9296)
+s <- srswr(sample_size, nrow(filtered_movies))
+rows <- (1:nrow(filtered_movies))[s!=0]
+rows <- rep(rows, s[s != 0])
+simple_sample <- filtered_movies[rows,]
+
+set.seed(9296)
+pik <- inclusionprobabilities(filtered_movies$revenue, sample_size)
+s <- UPsystematic(pik)
+systematic_sample <- filtered_movies[s!=0,]
+
+set.seed(9296)
+ordered_fm <- filtered_movies[order(filtered_movies$genre),]
+genre_sizes <- round(sample_size * table(ordered_fm$genre) / nrow(ordered_fm))
+genre_sizes["Documentary"] <- 1
+genre_sizes["History"] <- 1
+genre_sizes["TV Movie"] <- 1
+st <- sampling::strata(ordered_fm, stratanames = c("genre"),
+                         size = genre_sizes, method = "srswor")
+stratified_sample <- sampling::getdata(ordered_fm, st)
+
+s1_df <- data.frame(table(simple_sample$genre))
+colnames(s1_df) <- c("Genre", "Freq")
+
+s2_df <- data.frame(table(systematic_sample$genre))
+colnames(s2_df) <- c("Genre", "Freq")
+
+s3_df <- data.frame(table(stratified_sample$genre))
+colnames(s3_df) <- c("Genre", "Freq")
+
+p1 <- plot_ly(genre_df, labels=~Genre, values=~Freq, type="pie")
+p2 <- plot_ly(s1_df, labels=~Genre, values=~Freq, type="pie")
+p3 <- plot_ly(s2_df, labels=~Genre, values=~Freq, type="pie")
+p4 <- plot_ly(s3_df, labels=~Genre, values=~Freq, type="pie")
+
+fig <- plot_ly() |>
+  add_pie(data=genre_df, labels=~Genre, values=~Freq, type="pie", name="Population",
+          textposition="inside", domain=list(row=0, column=0)) |>
+  add_pie(data=s1_df, labels=~Genre, values=~Freq, type="pie", name="Simple",
+          textposition="inside", domain=list(row=1, column=0)) |>
+  add_pie(data=s2_df, labels=~Genre, values=~Freq, type="pie", name="Systematic",
+          textposition="inside", domain=list(row=0, column=1)) |>
+  add_pie(data=s3_df, labels=~Genre, values=~Freq, type="pie", name="Stratified",
+          textposition="inside", domain=list(row=1, column=1)) |>
+  layout(
+    title="Different Sample Genre Distributions",
+    grid=list(rows=2, columns=2)
+  )
+fig
+```
+Above, we see the resulting genre distributions of the three different samples with the population. As expected, the stratified sampling method gave us a distribution most similar to the population. The top 8 genres are in the same order with very similar percentages. This is because it takes into account the ratio of each genre and preserves that ratio in the sample.
+
+The simple sampling and the systematic sampling had noticeably different distributions when compared to the population. Drama was most common in the simple sample while Action was most common in the systematic sample.
+
+# Sampling Mean
+Now we examine how the average revenue, average profit, and average budget of each sample compares with one another. Ideally, the numbers from the samples will be close to the numbers from the population.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+sample_means <- data.frame(
+  Sample=c(rep("Population", 3), rep("Simple", 3), rep("Systematic", 3), rep("Stratified",3)),
+  Metric=c(rep(c("Budget", "Revenue", "Profit"), 4)),
+  Mean=c(mean(filtered_movies$budget),
+         mean(filtered_movies$revenue),
+         mean(filtered_movies$profit),
+         mean(simple_sample$budget),
+         mean(simple_sample$revenue),
+         mean(simple_sample$profit),
+         mean(systematic_sample$budget),
+         mean(systematic_sample$revenue),
+         mean(systematic_sample$profit),
+         mean(stratified_sample$budget),
+         mean(stratified_sample$revenue),
+         mean(stratified_sample$profit))
+)
+
+gg <- ggplot(sample_means, aes(fill=Metric, y=Mean, x=Sample)) +
+  geom_bar(position="dodge", stat="identity") +
+  ylab("amount (millions)") +
+  ggtitle("Budget/Profit/Revenue by Sample") +
+  theme(
+    plot.title = element_text(hjust=0.5),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)
+  )
+ggplotly(gg)
+```
+Looking at the results from the sampling, the population, simple, and stratified samples gave similar results for average revenue, average profit, and average budget. The one that stands out is the systematic sample. All three metrics were much higher than the other samples. The mean revenue for the population was $107.7 million, but the mean revenue for the systematic sample was $433.9 million. That's over four times the amount.
+
+I believe this is because the stratified sample contains a few outliers that are skewing the means. In this case, the outliers would be generational movies that cost more to make and also generate more revenue.
+
+Below we see the top 5 movies from the stratified sample base on revenue.
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+print(tibble(stratified_sample[order(stratified_sample$revenue, decreasing=TRUE),][1:5,][,c("title", "revenue", "budget", "profit")]))
+```
+Now compare those results to the top 5 movies in the systematic sample.
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+print(systematic_sample[order(systematic_sample$revenue, decreasing=TRUE),][1:5,][,c("title", "revenue", "budget", "profit")])
+```
+
+It is clear that the systematic sample selected a lot of famous movies that performed way above the norm, which inflated its averages. 
+
+When it comes to this dataset, I would take sampled data with a grain of salt, because the numbers are so affected by outliers. 
+
+# What Genres Do Viewers Like?
+We already looked at which genres were the most common. Then we looked at which genres were the most profitable. Finally, let's look at which genres are actually liked by fans and which are not. Before looking at the plot, I believe Action and Comedy will have high scores both due to what I see on social media as well as my own personal preference.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, , echo=TRUE, paged.print=TRUE}
+scores_by_genre <- filtered_movies |>
+  group_by(genre) |>
+  summarise(score=mean(vote_average))
+scores_by_genre <- scores_by_genre[order(scores_by_genre$score, decreasing=TRUE),]
+scores_by_genre$genre <- factor(scores_by_genre$genre,
+                         levels=factor(scores_by_genre$genre))
+plot_ly(x=scores_by_genre$genre, 
+        y=scores_by_genre$score, 
+        type="bar") |>
+  layout(
+    title="Average Score by Genre",
+    xaxis=list(title="Genre"),
+    yaxis=list(title="Score")
+  )
+```
+As we can see from the bar plot, the average scores of each genre are very similar. The genre with the highest average score is History at 7.01, and the one with the lowest average score is Horror at 6.16. There is less than a 1-point difference. Also, my prediction was wrong. Action and Comedy are actually among the lowest scoring genres.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=4,
+                      echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+
+# Conclusions
+After diving into this dataset, we are left with many meaningful insights. We found that the average movie budget is about $36 million, the average movie revenue is about $108 million, and the average movie profit is about $71 million. There is also a positive correlation between budget and revenue. This means that spending more money on perhaps better equipment, more talented actors, and more is typically worth it. 
+
+We also observed that the Central Limit Theorem is applicable to the voting average of the dataset. The population mean was 6.5, and the mean of the randomly selected samples were also about 6.5. 
+
+However, when experimenting with different sampling methods, we found that the numbers may come out different than the population, specially when measuring performance metrics and genre distribution. Stratified sampling was the most consistent of the three sampling methods.
+
+Last but not least, we also grouped the movies into genres to see how they differ. We found the most common genres to be Comedy, Drama, and Action. However, we learned that commonality is not indicative of box office performance. Animation, Adventure, and Family movies were the most profitable. Genre commonality also does not seem to be related to viewer scores. The genres with the highest average rating were actually History, Documentary, and Music. Comedy and Action, which are among the three most common genres, were actually among the least liked. These findings have shown that genre does not play a massive part in how well a movie performs. Also, there are probably other factors besides viewer preference and performance that are pushing companies to make more and more Comedy, Action, and Drama movies. 
+
+As such, there is still much more to be discovered about movies,
+
+
+
+
+
